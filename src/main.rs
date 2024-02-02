@@ -7,7 +7,7 @@ use std::{error::Error, fs::File, io::{Read, Write}};
 use base64::Engine;
 use bitstream_io::{ByteWrite, ByteWriter, LittleEndian};
 use clap::Parser;
-use image::{imageops, EncodableLayout, GrayImage};
+use image::{imageops, EncodableLayout, GrayImage, Luma};
 use indicatif::{ProgressBar, ProgressStyle};
 
 
@@ -66,6 +66,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let image_format = image::ImageFormat::from_path(file.name())?;
         let image = image::load_from_memory_with_format(data.as_bytes(), image_format)?;
         let image = image.to_luma8();
+        // TODO: Resizing takes a bulk of the time.
+        // So probably want to use a different way to downscale them.
+        // Or use all of the cpu to downscale.
         let image = imageops::resize(&image, args.out_width as u32, args.out_height as u32, imageops::FilterType::Triangle);
 
         frames.push(image);
@@ -97,7 +100,26 @@ fn main() -> Result<(), Box<dyn Error>> {
     writer.write(height as u8)?;
     writer.write(frames.len() as u16)?;
 
-    for frame in frames {
+    for (index, frame) in frames.iter().enumerate() {
+        
+        // We encode the difference between frames.
+        let last = if index > 0 {
+            frames[index - 1].clone()
+        } else {
+            GrayImage::new(width, height)
+        };
+
+        let mut diff = GrayImage::new(width, height);
+        for x in 0..width {
+            for y in 0..height {
+                let pixel = frame.get_pixel(x, y).0[0] >= 127;
+                let last_pixel = last.get_pixel(x, y).0[0] >= 127;
+
+                if pixel != last_pixel {
+                    diff.put_pixel(x, y, Luma([255; 1]));
+                }
+            }
+        }
 
         // Simplified RLE
         // Flip flops between off/on based on num pixels that were on or off.
@@ -106,9 +128,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut color = false;
         let mut length: u8 = 0;
 
-        for y in 0..frame.height() {
-            for x in 0..frame.width() {
-                let pixel = frame.get_pixel(x, y).0[0] >= 127;
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = diff.get_pixel(x, y).0[0] >= 127;
 
                 if pixel == color {
                     if length == 0xFF {
@@ -131,9 +153,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             lengths.push(length);
         }
         // Force end color to be off.
-        if color {
-            lengths.push(0);
-        }
+        // if color {
+        //     lengths.push(0);
+        // }
 
         writer.write(lengths.len() as u16)?;
         writer.write_bytes(&lengths)?;

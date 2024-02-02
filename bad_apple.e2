@@ -1,0 +1,174 @@
+
+# If you are having trouble running this try using these commands:
+#     wire_expression2_unlimited 1
+#     wire_expression2_quotatick 99999999
+
+@name Bad Apple
+@strict
+@inputs Screen:wirelink
+@persist Base64Stream:string
+
+
+
+if(first() || dupefinished()) {
+    # Import the bad apple video data from another file.
+    #include "bad_apple_data"
+}
+
+
+
+
+
+function wirelink:ds_reset(Width:number, Height:number) {
+    This[1048572] = Height
+    This[1048573] = Width
+    This[1048574] = 0 # Clear screen
+    This[1048569] = 2 # Color mode
+    This[1048575] = 1 # Apply changes
+}
+
+function wirelink:ds_invert(I:number) {
+    if(This[I]) {
+        This[I] = 0x000000
+    } else {
+        This[I] = 0xFFFFFF
+    }
+}
+
+
+
+
+
+const Base64Charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+let Base64Index = 1
+let Base64Current = 0
+let Base64CurrentIndex = 0
+
+function number stream_next() {
+    
+    if(Base64CurrentIndex <= 0) {
+        Base64Current =
+            bShl(Base64Charset:find(Base64Stream[Base64Index]) - 1, 18) +
+            bShl(Base64Charset:find(Base64Stream[Base64Index + 1]) - 1, 12) +
+            bShl(Base64Charset:find(Base64Stream[Base64Index + 2]) - 1, 6) +
+            (Base64Charset:find(Base64Stream[Base64Index + 3]) - 1)
+        
+        Base64CurrentIndex = 3
+        
+        Base64Index += 4
+    }
+    
+    Base64CurrentIndex--
+    return bAnd(bShr(Base64Current, Base64CurrentIndex * 8), 0xFF)
+}
+
+function void stream_reset() {
+    Base64Index = 1
+    Base64Current = 0
+    Base64CurrentIndex = 0
+}
+
+
+
+
+
+let State = 0
+
+if(first() || dupefinished()) {
+    if((State == 0) && (Screen != nowirelink())) {
+        State = 1
+    }
+}
+if((State == 0) && ~Screen && (Screen != nowirelink())) {
+    State = 1
+}
+
+let Width = 0
+let Height = 0
+let Frames = 0
+let FPS = 0
+let Frame = 0
+
+function void next_frame() {
+    let Index = 0
+    let Color = 0
+    
+    while(Index < Width * Height) {
+        let Count = stream_next()
+        
+        if(Color) {
+            for(I = 0, Count - 1, 1) {
+                Screen:ds_invert(Index + I)
+            }
+        }
+        
+        Index += Count
+        Color = !Color
+    }
+}
+
+
+
+let LastTime = -1
+let AccTime = 0
+let FrameTime = 0
+
+function number check_frame() {
+    let CurrTime = curtime()
+    
+    if(LastTime != -1) {
+        let DeltaTime = CurrTime - LastTime
+        LastTime = CurrTime
+        
+        AccTime += DeltaTime
+        if(AccTime >= FrameTime) {
+            AccTime -= FrameTime
+            return 1
+        }
+        return 0
+    }
+    
+    LastTime = CurrTime
+    return 1
+}
+
+event tick() {
+    
+    switch(State) {
+        case 1,
+            
+            stream_reset()
+            
+            Width = stream_next()
+            Height = stream_next()
+            Frames = bOr(stream_next(), bShl(stream_next(), 8))
+            FPS = stream_next()
+            
+            FrameTime = 1 / FPS
+            
+            Screen:ds_reset(Width, Height)
+            
+            State = 2
+            
+            print("Width: "+Width)
+            print("Height: "+Height)
+            print("Frames: "+Frames)
+            print("FPS: "+FPS)
+            
+        break
+        case 2,
+        
+            if(!check_frame()) { break }
+            
+            next_frame()
+            Frame++
+            if(Frame >= Frames) {
+                State = 3
+            }
+            
+        break
+    }
+    
+}
+
+

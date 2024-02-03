@@ -135,11 +135,15 @@ function number check_frame() {
     return 1
 }
 
+let Loop = 1
+let First = 1
+
 event tick() {
     
     switch(State) {
         case 1,
             
+            Frame = 0
             stream_reset()
             
             Width = stream_next()
@@ -151,12 +155,15 @@ event tick() {
             
             Screen:ds_reset(Width, Height)
             
+            if(First) {
+                print("Width: "+Width)
+                print("Height: "+Height)
+                print("Frames: "+Frames)
+                print("FPS: "+FPS)
+                First = 0
+            }
+
             State = 2
-            
-            print("Width: "+Width)
-            print("Height: "+Height)
-            print("Frames: "+Frames)
-            print("FPS: "+FPS)
             
         break
         case 2,
@@ -169,6 +176,13 @@ event tick() {
                 State = 3
             }
             
+        break
+        case 3,
+
+            if(Loop) {
+                State = 1
+            }
+
         break
     }
     

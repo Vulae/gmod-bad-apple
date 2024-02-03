@@ -18,6 +18,7 @@ use base64::Engine;
 use bitstream_io::{ByteWrite, ByteWriter, LittleEndian};
 use clap::Parser;
 use image::{imageops, EncodableLayout, GrayImage, Luma};
+use zip::ZipArchive;
 
 
 
@@ -27,18 +28,185 @@ struct Args {
     #[arg(index = 1)]
     frames: String,
     #[arg(index = 2)]
-    frames_fps: u64,
+    frames_fps: u32,
     #[arg(index = 3)]
     audio: String,
     #[arg(index = 4)]
     output: String,
     #[arg(index = 5)]
-    out_width: u64,
+    out_width: u32,
     #[arg(index = 6)]
-    out_height: u64,
+    out_height: u32,
     #[arg(index = 7)]
-    out_fps: u64,
+    out_fps: u32,
 }
+
+
+
+
+
+fn load_frames(zip: &mut ZipArchive<File>, in_fps: u32, width: u32, height: u32, fps: u32) -> Result<Vec<GrayImage>, Box<dyn Error>> {
+    let mut current_time: f64 = 0.0;
+    let in_frametime: f64 = 1.0 / (in_fps as f64);
+    let frametime: f64 = 1.0 / (fps as f64);
+
+    let (tx, rx) = mpsc::channel();
+
+    for index in 0..zip.len() {
+        current_time += in_frametime;
+        if current_time > frametime {
+            current_time -= frametime;
+        } else {
+            continue;
+        }
+
+        let mut file = zip.by_index(index)?;
+
+        let image_format = image::ImageFormat::from_path(file.name()).unwrap();
+
+        let mut data: Vec<u8> = vec![];
+        let _len = file.read_to_end(&mut data)?;
+
+        let thread_tx = tx.clone();
+
+        thread::spawn(move || {
+            let image = image::load_from_memory_with_format(data.as_bytes(), image_format).unwrap();
+            let image = image.to_luma8();
+            // Resizing takes a VERY VERY long time, So we use everything we can.
+            let image = imageops::resize(&image, width, height, imageops::FilterType::Lanczos3);
+
+            thread_tx.send((index, image)).unwrap();
+        });
+    }
+
+    drop(tx);
+
+    let frames: Vec<GrayImage> = {
+        let mut recv_frames = rx.iter().collect::<Vec<_>>();
+        recv_frames.sort_by(|a, b| {
+            a.0.cmp(&b.0)
+        });
+        recv_frames.iter().map(|frame| {
+            frame.1.clone()
+        }).collect::<Vec<_>>()
+    };
+
+    Ok(frames)
+}
+
+
+
+
+
+fn get_size(frames: &Vec<GrayImage>) -> Result<(u32, u32), Box<dyn Error>> {
+    let (width, height) = (frames[0].width(), frames[0].height());
+
+    if frames.iter().any(|frame| {
+        frame.width() != width || frame.height() != height
+    }) {
+        panic!("Frames width & heights do not match.");
+    }
+
+    Ok((width, height))
+}
+
+fn encode_frame(frame: &GrayImage) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut lengths: Vec<u8> = Vec::new();
+    let mut color = false;
+    let mut length: u8 = 0;
+
+    for y in 0..frame.height() {
+        for x in 0..frame.width() {
+            let pixel = frame.get_pixel(x, y).0[0] >= 127;
+
+            if pixel == color {
+                if length == 0xFF {
+                    lengths.push(0xFF);
+                    lengths.push(0);
+                    length = 1;
+                } else {
+                    length += 1;
+                }
+            } else {
+                lengths.push(length);
+                color = pixel;
+                length = 1;
+            }
+        }
+    }
+
+    // Force total length to full image.
+    if length > 0 {
+        lengths.push(length);
+    }
+    // Force end color to be off.
+    // if color {
+    //     lengths.push(0);
+    // }
+
+    Ok(lengths)
+}
+
+fn frames_difference(frame_a: &GrayImage, frame_b: &GrayImage) -> Result<GrayImage, Box<dyn Error>> {
+    if frame_a.width() != frame_b.width() || frame_a.height() != frame_b.height() {
+        panic!("Frames width & heights do not match.");
+    }
+
+    let (width, height) = (frame_a.width(), frame_b.height());
+
+    let mut frame_difference = GrayImage::new(width, height);
+    for x in 0..width {
+        for y in 0..height {
+            let a_pixel = frame_a.get_pixel(x, y).0[0] >= 127;
+            let b_pixel = frame_b.get_pixel(x, y).0[0] >= 127;
+
+            if a_pixel != b_pixel {
+                frame_difference.put_pixel(x, y, Luma([255; 1]));
+            }
+        }
+    }
+    Ok(frame_difference)
+}
+
+fn encode_frames(frames: &Vec<GrayImage>) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut buffer: Vec<u8> = Vec::new();
+    
+    let (width, height) = get_size(frames)?;
+
+    for (index, frame) in frames.iter().enumerate() {
+        let last_frame = if index > 0 {
+            frames[index - 1].clone()
+        } else {
+            GrayImage::new(width, height)
+        };
+
+        let frame_difference = frames_difference(&last_frame, frame)?;
+
+        let frame_encoded = encode_frame(&frame_difference)?;
+        buffer.write(&frame_encoded)?;
+    }
+
+    Ok(buffer)
+}
+
+fn encode_video(frames: &Vec<GrayImage>, fps: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut writer = ByteWriter::endian(&mut buffer, LittleEndian);
+
+    let (width, height) = get_size(frames)?;
+
+    writer.write(width as u8)?;
+    writer.write(height as u8)?;
+    writer.write(frames.len() as u16)?;
+    writer.write(fps as u8)?;
+
+    let frames_encoded = encode_frames(frames)?;
+    writer.write_bytes(&frames_encoded)?;
+
+    Ok(buffer)
+}
+
+
 
 
 
@@ -56,144 +224,19 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Loading frames. . .");
 
-    let (tx, rx) = mpsc::channel();
-
-    let mut current_time: f64 = 0.0;
-    let in_frametime: f64 = 1.0 / (args.frames_fps as f64);
-    let out_frametime: f64 = 1.0 / (args.out_fps as f64);
-
-    for i in 0..zip.len() {
-        current_time += in_frametime;
-        if current_time > out_frametime {
-            current_time -= out_frametime;
-        } else {
-            continue;
-        }
-
-        let mut file = zip.by_index(i)?;
-        
-        let image_format = image::ImageFormat::from_path(file.name()).unwrap();
-
-        let mut data: Vec<u8> = vec![];
-        let _len = file.read_to_end(&mut data)?;
-
-        let thread_tx = tx.clone();
-
-        thread::spawn(move || {
-            let image = image::load_from_memory_with_format(data.as_bytes(), image_format).unwrap();
-            let image = image.to_luma8();
-            // Resizing takes a VERY VERY long time, So we use everything we can.
-            let image = imageops::resize(&image, args.out_width as u32, args.out_height as u32, imageops::FilterType::Lanczos3);
-
-            thread_tx.send((i, image)).unwrap();
-        });
-    }
-
-    drop(tx);
-
-    let frames: Vec<GrayImage> = {
-        let mut recv_frames = rx.iter().collect::<Vec<_>>();
-        recv_frames.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-        });
-        recv_frames.iter().map(|frame| {
-            frame.1.clone()
-        }).collect::<Vec<_>>()
-    };
+    let frames = load_frames(&mut zip, args.frames_fps, args.out_width, args.out_height, args.out_fps)?;
 
     println!("Num frames: {}", frames.len());
 
-
-
-    let width = frames[0].width();
-    let height = frames[0].height();
-
-    if frames.iter().any(|frame| {
-        frame.width() != width || frame.height() != height
-    }) {
-        panic!("Frame width & heights do not match.");
-    }
-
-
-
     println!("Generating output. . .");
 
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut writer = ByteWriter::endian(&mut buffer, LittleEndian);
-
-    writer.write(width as u8)?;
-    writer.write(height as u8)?;
-    writer.write(frames.len() as u16)?;
-    writer.write(args.out_fps as u8)?;
-
-    for (index, frame) in frames.iter().enumerate() {
-        
-        // We encode the difference between frames.
-        let last = if index > 0 {
-            frames[index - 1].clone()
-        } else {
-            GrayImage::new(width, height)
-        };
-
-        let mut diff = GrayImage::new(width, height);
-        for x in 0..width {
-            for y in 0..height {
-                let pixel = frame.get_pixel(x, y).0[0] >= 127;
-                let last_pixel = last.get_pixel(x, y).0[0] >= 127;
-
-                if pixel != last_pixel {
-                    diff.put_pixel(x, y, Luma([255; 1]));
-                }
-            }
-        }
-
-        // Simplified RLE
-        // Flip flops between off/on based on num pixels that were on or off.
-
-        let mut lengths: Vec<u8> = Vec::new();
-        let mut color = false;
-        let mut length: u8 = 0;
-
-        for y in 0..height {
-            for x in 0..width {
-                let pixel = diff.get_pixel(x, y).0[0] >= 127;
-
-                if pixel == color {
-                    if length == 0xFF {
-                        lengths.push(0xFF);
-                        lengths.push(0);
-                        length = 1;
-                    } else {
-                        length += 1;
-                    }
-                } else {
-                    lengths.push(length);
-                    color = pixel;
-                    length = 1;
-                }
-            }
-        }
-
-        // Force total length to full image.
-        if length > 0 {
-            lengths.push(length);
-        }
-        // Force end color to be off.
-        // if color {
-        //     lengths.push(0);
-        // }
-
-        // writer.write(lengths.len() as u16)?;
-        writer.write_bytes(&lengths)?;
-    }
-
-
+    let encoded = encode_video(&frames, args.out_fps)?;
 
     println!("Writing output.");
 
     let mut out_file = File::create(&args.output)?;
     out_file.write(b"Base64Stream = \"")?;
-    out_file.write_all(base64::prelude::BASE64_STANDARD.encode(&buffer).as_bytes())?;
+    out_file.write_all(base64::prelude::BASE64_STANDARD.encode(&encoded).as_bytes())?;
     out_file.write(b"\"")?;
     // out_file.write_all(&buffer)?;
     out_file.flush()?;

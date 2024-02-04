@@ -26,15 +26,17 @@ function wirelink:ds_reset(Width:number, Height:number) {
     This[1048572] = Height
     This[1048573] = Width
     This[1048574] = 0 # Clear screen
-    This[1048569] = 2 # Color mode
+    This[1048569] = 4 # Color mode
+    # Color mode 4 is undocumented. 8 bit, 1 channel.
+    # (This should update the screen faster, but it does not seem to.)
     This[1048575] = 1 # Apply changes
 }
 
 function wirelink:ds_invert(I:number) {
     if(This[I]) {
-        This[I] = 0x000000
+        This[I] = 0x00
     } else {
-        This[I] = 0xFFFFFF
+        This[I] = 0xFF
     }
 }
 

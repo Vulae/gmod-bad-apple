@@ -86,13 +86,14 @@ if((State == 0) && ~Screen && (Screen != nowirelink())) {
     State = 1
 }
 
+let Format = 0
 let Width = 0
 let Height = 0
 let Frames = 0
 let FPS = 0
 let Frame = 0
 
-function void next_frame() {
+function void rle_simple_decode_frame() {
     let Index = 0
     let Color = 0
     
@@ -146,6 +147,7 @@ event tick() {
             Frame = 0
             stream_reset()
             
+            Format = stream_next()
             Width = stream_next()
             Height = stream_next()
             Frames = bOr(stream_next(), bShl(stream_next(), 8))
@@ -155,7 +157,12 @@ event tick() {
             
             Screen:ds_reset(Width, Height)
             
+            if((Format != 1) && (Format != 2)) {
+                error("Invalid Format.")
+            }
+            
             if(First) {
+                print("Format: "+array("RleSimple", "QuadTree")[Format, string])
                 print("Width: "+Width)
                 print("Height: "+Height)
                 print("Frames: "+Frames)
@@ -170,7 +177,10 @@ event tick() {
         
             if(!check_frame()) { break }
             
-            next_frame()
+            switch(Format) {
+                case 1, rle_simple_decode_frame(), break
+                case 2, error("QuadTree format is not yet supported.")
+            }
             Frame++
             if(Frame >= Frames) {
                 State = 3

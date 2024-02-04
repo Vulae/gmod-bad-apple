@@ -17,8 +17,10 @@ use std::{error::Error, fs::File, io::{Read, Write}, sync::mpsc, thread};
 use base64::Engine;
 use bitstream_io::{ByteWrite, ByteWriter, LittleEndian};
 use clap::Parser;
-use image::{imageops, EncodableLayout, GrayImage, Luma};
+use format::Format;
+use image::{imageops, EncodableLayout, GrayImage};
 use zip::ZipArchive;
+mod format;
 
 
 
@@ -98,7 +100,7 @@ fn load_frames(zip: &mut ZipArchive<File>, in_fps: u32, width: u32, height: u32,
 
 
 
-fn get_size(frames: &Vec<GrayImage>) -> Result<(u32, u32), Box<dyn Error>> {
+pub fn get_size(frames: &Vec<GrayImage>) -> Result<(u32, u32), Box<dyn Error>> {
     let (width, height) = (frames[0].width(), frames[0].height());
 
     if frames.iter().any(|frame| {
@@ -110,97 +112,23 @@ fn get_size(frames: &Vec<GrayImage>) -> Result<(u32, u32), Box<dyn Error>> {
     Ok((width, height))
 }
 
-fn encode_frame(frame: &GrayImage) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut lengths: Vec<u8> = Vec::new();
-    let mut color = false;
-    let mut length: u8 = 0;
 
-    for y in 0..frame.height() {
-        for x in 0..frame.width() {
-            let pixel = frame.get_pixel(x, y).0[0] >= 127;
 
-            if pixel == color {
-                if length == 0xFF {
-                    lengths.push(0xFF);
-                    lengths.push(0);
-                    length = 1;
-                } else {
-                    length += 1;
-                }
-            } else {
-                lengths.push(length);
-                color = pixel;
-                length = 1;
-            }
-        }
-    }
 
-    // Force total length to full image.
-    if length > 0 {
-        lengths.push(length);
-    }
-    // Force end color to be off.
-    // if color {
-    //     lengths.push(0);
-    // }
 
-    Ok(lengths)
-}
-
-fn frames_difference(frame_a: &GrayImage, frame_b: &GrayImage) -> Result<GrayImage, Box<dyn Error>> {
-    if frame_a.width() != frame_b.width() || frame_a.height() != frame_b.height() {
-        panic!("Frames width & heights do not match.");
-    }
-
-    let (width, height) = (frame_a.width(), frame_b.height());
-
-    let mut frame_difference = GrayImage::new(width, height);
-    for x in 0..width {
-        for y in 0..height {
-            let a_pixel = frame_a.get_pixel(x, y).0[0] >= 127;
-            let b_pixel = frame_b.get_pixel(x, y).0[0] >= 127;
-
-            if a_pixel != b_pixel {
-                frame_difference.put_pixel(x, y, Luma([255; 1]));
-            }
-        }
-    }
-    Ok(frame_difference)
-}
-
-fn encode_frames(frames: &Vec<GrayImage>) -> Result<Vec<u8>, Box<dyn Error>> {
-    let mut buffer: Vec<u8> = Vec::new();
-    
-    let (width, height) = get_size(frames)?;
-
-    for (index, frame) in frames.iter().enumerate() {
-        let last_frame = if index > 0 {
-            frames[index - 1].clone()
-        } else {
-            GrayImage::new(width, height)
-        };
-
-        let frame_difference = frames_difference(&last_frame, frame)?;
-
-        let frame_encoded = encode_frame(&frame_difference)?;
-        buffer.write(&frame_encoded)?;
-    }
-
-    Ok(buffer)
-}
-
-fn encode_video(frames: &Vec<GrayImage>, fps: u32) -> Result<Vec<u8>, Box<dyn Error>> {
+fn encode_video(format: Format, frames: &Vec<GrayImage>, fps: u32) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut buffer: Vec<u8> = Vec::new();
     let mut writer = ByteWriter::endian(&mut buffer, LittleEndian);
 
     let (width, height) = get_size(frames)?;
 
+    writer.write(format as u8)?;
     writer.write(width as u8)?;
     writer.write(height as u8)?;
     writer.write(frames.len() as u16)?;
     writer.write(fps as u8)?;
 
-    let frames_encoded = encode_frames(frames)?;
+    let frames_encoded = format.encode(frames)?;
     writer.write_bytes(&frames_encoded)?;
 
     Ok(buffer)
@@ -230,7 +158,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Generating output. . .");
 
-    let encoded = encode_video(&frames, args.out_fps)?;
+    let format = Format::RleSimple;
+    let encoded = encode_video(format, &frames, args.out_fps)?;
 
     println!("Writing output.");
 

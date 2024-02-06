@@ -41,6 +41,8 @@ struct Args {
     out_height: u32,
     #[arg(index = 7)]
     out_fps: u32,
+    #[arg(short, long, value_enum, default_value_t = Format::RleSimple)]
+    format: Format,
 }
 
 
@@ -61,6 +63,8 @@ fn load_frames(zip: &mut ZipArchive<File>, in_fps: u32, width: u32, height: u32,
         } else {
             continue;
         }
+
+        // if index != 120 { continue; }
 
         let mut file = zip.by_index(index)?;
 
@@ -158,8 +162,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("Generating output. . .");
 
-    let format = Format::RleSimple;
-    let encoded = encode_video(format, &frames, args.out_fps)?;
+    let encoded = encode_video(args.format, &frames, args.out_fps)?;
 
     println!("Writing output.");
 
@@ -167,7 +170,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     out_file.write(b"Base64Stream = \"")?;
     out_file.write_all(base64::prelude::BASE64_STANDARD.encode(&encoded).as_bytes())?;
     out_file.write(b"\"")?;
-    // out_file.write_all(&buffer)?;
+    // out_file.write_all(&encoded)?;
     out_file.flush()?;
 
 

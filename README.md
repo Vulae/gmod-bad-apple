@@ -53,7 +53,7 @@ The video data is encoded into [base64](https://en.wikipedia.org/wiki/Base64) an
             * This may be fixed later on, by adding a 4 or 2 number split nodes.
 
 Format Table (60x45 @ 7fps)
-| Format | Size (Base64) | CPU Usage (μs) |
+| Format | Size (Base64) | Total CPU Usage (μs) |
 |-|-|-|
 | [RleSimple](src/format/rle_simple.rs) | 304KiB | 515,026 |
 | [Quadtree](src/format/quadtree.rs) | 210KiB | 1,302,453 |

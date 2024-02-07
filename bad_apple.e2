@@ -22,7 +22,10 @@ if(first() || dupefinished()) {
 
 
 
-function wirelink:ds_reset(Width:number, Height:number) {
+let Width = 0
+let Height = 0
+
+function wirelink:ds_reset() {
     This[1048572] = Height
     This[1048573] = Width
     This[1048574] = 0 # Clear screen
@@ -37,6 +40,18 @@ function wirelink:ds_invert(I:number) {
         This[I] = 0x00
     } else {
         This[I] = 0xFF
+    }
+}
+
+function wirelink:ds_invert(X:number, Y:number) {
+    This:ds_invert(X + Y * Width)
+}
+
+function wirelink:ds_invert_area(X:number, Y:number, W:number, H:number) {
+    for(Dx = 0, W - 1, 1) {
+        for(Dy = 0, H - 1, 1) {
+            This:ds_invert(X + Dx, Y + Dy)
+        }
     }
 }
 
@@ -67,10 +82,27 @@ function number stream_next() {
     return bAnd(bShr(Base64Current, Base64CurrentIndex * 8), 0xFF)
 }
 
+let Base64BitByte = 8
+let Base64BitIndex = 8
+function number stream_next_bit() {
+    if(Base64BitIndex > 6) {
+        Base64BitIndex = -1
+        Base64BitByte = stream_next()
+    }
+    
+    Base64BitIndex++
+    return bAnd(bShr(Base64BitByte, Base64BitIndex), 0b1)
+}
+
+function void stream_bit_align() {
+    Base64BitIndex = 8
+}
+
 function void stream_reset() {
     Base64Index = 1
     Base64Current = 0
     Base64CurrentIndex = 0
+    stream_bit_align()
 }
 
 
@@ -89,8 +121,6 @@ if((State == 0) && ~Screen && (Screen != nowirelink())) {
 }
 
 let Format = 0
-let Width = 0
-let Height = 0
 let Frames = 0
 let FPS = 0
 let Frame = 0
@@ -110,6 +140,27 @@ function void rle_simple_decode_frame() {
         
         Index += Count
         Color = !Color
+    }
+}
+
+function void quadtree_decode_frame(X:number, Y:number, W:number, H:number) {
+    # if(W < 1 || H < 1) {
+    #     error("Quadtree is 0 sized.")
+    # }
+    
+    if(stream_next_bit()) {
+        # Node is leaf.
+        if(stream_next_bit()) {
+            Screen:ds_invert_area(X, Y, W, H)
+        }
+    } else {
+        # Node is branch.
+        let SplitWidth = W / 2
+        let SplitHeight = H / 2
+        quadtree_decode_frame(X, Y, ceil(SplitWidth), ceil(SplitHeight))
+        quadtree_decode_frame(X + ceil(SplitWidth), Y, floor(SplitWidth), ceil(SplitHeight))
+        quadtree_decode_frame(X, Y + ceil(SplitHeight), ceil(SplitWidth), floor(SplitHeight))
+        quadtree_decode_frame(X + ceil(SplitWidth), Y + ceil(SplitHeight), floor(SplitWidth), floor(SplitHeight))
     }
 }
 
@@ -157,7 +208,7 @@ event tick() {
             
             FrameTime = 1 / FPS
             
-            Screen:ds_reset(Width, Height)
+            Screen:ds_reset()
             
             if((Format != 1) && (Format != 2)) {
                 error("Invalid Format.")
@@ -171,17 +222,17 @@ event tick() {
                 print("FPS: "+FPS)
                 First = 0
             }
-
+            
             State = 2
             
         break
         case 2,
-        
+            
             if(!check_frame()) { break }
             
             switch(Format) {
                 case 1, rle_simple_decode_frame(), break
-                case 2, error("QuadTree format is not yet supported.")
+                case 2, quadtree_decode_frame(0, 0, Width, Height), stream_bit_align(), break
             }
             Frame++
             if(Frame >= Frames) {
@@ -190,11 +241,11 @@ event tick() {
             
         break
         case 3,
-
+            
             if(Loop) {
                 State = 1
             }
-
+            
         break
     }
     

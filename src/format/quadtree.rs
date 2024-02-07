@@ -3,7 +3,7 @@
 // It all proof of concept and W.I.P. at the moment.
 
 use std::{error::Error, io::Write, mem};
-use bitstream_io::{BigEndian, BitWrite, BitWriter};
+use bitstream_io::{BitWrite, BitWriter, LittleEndian};
 use image::GrayImage;
 use crate::get_size;
 use super::common::frames_difference;
@@ -154,7 +154,7 @@ impl QuadTree {
 
 fn encode_frame(frame: &GrayImage) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut buffer: Vec<u8> = Vec::new();
-    let mut writer = BitWriter::endian(&mut buffer, BigEndian);
+    let mut writer = BitWriter::endian(&mut buffer, LittleEndian);
 
     let mut quadtree = QuadTree::new(BoundingBox::new(0, 0, frame.width(), frame.height()));
     

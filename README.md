@@ -18,6 +18,7 @@ The video data is encoded into [base64](https://en.wikipedia.org/wiki/Base64) an
 * Video data
     * Format - 1 byte
     * Width - 1 byte
+    * Height - 1 byte
     * Frames - 2 bytes
     * FPS - 1 byte
     * Video stream

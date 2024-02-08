@@ -40,9 +40,10 @@ The video data is encoded into [base64](https://en.wikipedia.org/wiki/Base64) an
     * Splits to sub-trees or leafs, Leafs encode color information.
         * 0 = Split
         * 1 = Leaf (Next bit is if pixel is off/on)
+        * Must be leaf if width & height is 1.
         * Each sub-tree/leaf is evaluated from depth first.
             * (Top left, top right, bottom left, bottom right)
-        * Eg. `0b0101111010111110` will decode to
+        * Eg. `0b010111100110` will decode to
             ```
             __XX
             __XX

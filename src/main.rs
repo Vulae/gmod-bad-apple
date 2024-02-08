@@ -79,7 +79,9 @@ fn load_frames(zip: &mut ZipArchive<File>, in_fps: u32, width: u32, height: u32,
             let image = image::load_from_memory_with_format(data.as_bytes(), image_format).unwrap();
             let image = image.to_luma8();
             // Resizing takes a VERY VERY long time, So we use everything we can.
-            let image = imageops::resize(&image, width, height, imageops::FilterType::Lanczos3);
+            // let filtering = imageops::FilterType::Lanczos3;
+            let filter = imageops::FilterType::Triangle;
+            let image = imageops::resize(&image, width, height, filter);
 
             thread_tx.send((index, image)).unwrap();
         });

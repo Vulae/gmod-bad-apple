@@ -49,12 +49,9 @@ The video data is encoded into [base64](https://en.wikipedia.org/wiki/Base64) an
             XX_X
             XXX_
             ```
-        * Due to some current limitations while splitting quadtree, there may be some artifacts while splitting small sections.
-            * Eg. 1x2 will not split, as 2 of the nodes will be 0 sized.
-            * This may be fixed later on, by adding a 4 or 2 number split nodes.
 
 Format Table (60x45 @ 7fps)
 | Format | Size (Base64) | Total CPU Usage (μs) |
 |-|-|-|
 | [RleSimple](src/format/rle_simple.rs) | 304KiB | 515,026 |
-| [Quadtree](src/format/quadtree.rs) | 210KiB | 1,302,453 |
+| [Quadtree](src/format/quadtree.rs) | 177KiB | 1,170,762 |

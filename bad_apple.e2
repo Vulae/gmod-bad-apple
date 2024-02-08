@@ -148,13 +148,32 @@ function void quadtree_decode_frame(X:number, Y:number, W:number, H:number) {
     #     error("Quadtree is 0 sized.")
     # }
     
+    if(W == 1 && H == 1) {
+        # Node has to be leaf.
+        if(stream_next_bit()) {
+            Screen:ds_invert(X, Y)
+        }
+        return
+    }
+    
     if(stream_next_bit()) {
         # Node is leaf.
         if(stream_next_bit()) {
             Screen:ds_invert_area(X, Y, W, H)
         }
+        return
+    }
+    
+    # Node is branch.
+    if(W == 1) {
+        let SplitHeight = H / 2
+        quadtree_decode_frame(X, Y, 1, ceil(SplitHeight))
+        quadtree_decode_frame(X, Y + ceil(SplitHeight), 1, floor(SplitHeight))
+    } elseif(H == 1) {
+        let SplitWidth = W / 2
+        quadtree_decode_frame(X, Y, ceil(SplitWidth), 1)
+        quadtree_decode_frame(X + ceil(SplitWidth), Y, floor(SplitWidth), 1)
     } else {
-        # Node is branch.
         let SplitWidth = W / 2
         let SplitHeight = H / 2
         quadtree_decode_frame(X, Y, ceil(SplitWidth), ceil(SplitHeight))
@@ -192,6 +211,8 @@ function number check_frame() {
 let Loop = 1
 let First = 1
 
+let TotalCPUUsage = 0
+
 event tick() {
     
     switch(State) {
@@ -223,6 +244,8 @@ event tick() {
                 First = 0
             }
             
+            TotalCPUUsage = 0
+            
             State = 2
             
         break
@@ -239,8 +262,12 @@ event tick() {
                 State = 3
             }
             
+            TotalCPUUsage += cpuUsage()
+            
         break
         case 3,
+            
+            print("Total CPU usage: "+(TotalCPUUsage * 1000000))
             
             if(Loop) {
                 State = 1

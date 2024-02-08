@@ -2,7 +2,8 @@
 // There is actually no decoder for this currently.
 // It all proof of concept and W.I.P. at the moment.
 
-use std::{error::Error, io::Write, mem};
+use core::fmt;
+use std::{error::Error, io::Write};
 use bitstream_io::{BitWrite, BitWriter, LittleEndian};
 use image::GrayImage;
 use crate::get_size;
@@ -10,6 +11,22 @@ use super::common::frames_difference;
 
 
 
+#[derive(Debug, Clone)]
+enum BoundingBoxError {
+    CannotSplit
+}
+
+impl fmt::Display for BoundingBoxError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BoundingBoxError::CannotSplit => write!(f, "Cannot split bounding box, Bounding box is at minimum size."),
+        }
+    }
+}
+
+impl Error for BoundingBoxError { }
+
+#[derive(Clone)]
 struct BoundingBox {
     x: u32,
     y: u32,
@@ -23,41 +40,30 @@ impl BoundingBox {
         BoundingBox { x, y, width, height }
     }
 
-    pub fn split(&mut self) -> Option<(BoundingBox, BoundingBox, BoundingBox, BoundingBox)> {
-
-        if self.width < 2 || self.height < 2 {
-            return None;
-        }
-
+    pub fn split(&mut self) -> Result<Vec<BoundingBox>, Box<dyn Error>> {
         let split_width = (self.width as f64) / 2.;
         let split_height = (self.height as f64) / 2.;
 
-        Some((
-            BoundingBox::new(
-                self.x,
-                self.y,
-                split_width.ceil() as u32,
-                split_height.ceil() as u32
-            ),
-            BoundingBox::new(
-                self.x + (split_width.ceil() as u32),
-                self.y,
-                split_width.floor() as u32,
-                split_height.ceil() as u32
-            ),
-            BoundingBox::new(
-                self.x,
-                self.y + (split_height.ceil() as u32),
-                split_width.ceil() as u32,
-                split_height.floor() as u32
-            ),
-            BoundingBox::new(
-                self.x + (split_width.ceil() as u32),
-                self.y + (split_height.ceil() as u32),
-                split_width.floor() as u32,
-                split_height.floor() as u32
-            )
-        ))
+        if self.width == 1 {
+            Ok(vec![
+                BoundingBox::new(self.x, self.y, 1, split_height.ceil() as u32),
+                BoundingBox::new(self.x, self.y + (split_height.ceil() as u32), 1, split_height.floor() as u32)
+            ])
+        } else if self.height == 1 {
+            Ok(vec![
+                BoundingBox::new(self.x, self.y, split_width.ceil() as u32, 1),
+                BoundingBox::new(self.x + (split_width.ceil() as u32), self.y, split_width.floor() as u32, 1)
+            ])
+        } else if self.width < 2 || self.height < 2 {
+            Err(Box::new(BoundingBoxError::CannotSplit))
+        } else {
+            Ok(vec![
+                BoundingBox::new(self.x, self.y, split_width.ceil() as u32, split_height.ceil() as u32),
+                BoundingBox::new(self.x + (split_width.ceil() as u32), self.y, split_width.floor() as u32, split_height.ceil() as u32),
+                BoundingBox::new(self.x, self.y + (split_height.ceil() as u32), split_width.ceil() as u32, split_height.floor() as u32),
+                BoundingBox::new(self.x + (split_width.ceil() as u32), self.y + (split_height.ceil() as u32), split_width.floor() as u32, split_height.floor() as u32)
+            ])
+        }
     }
 
     pub fn iter_points(&self) -> impl Iterator<Item = (u32, u32)> + '_ {
@@ -71,19 +77,8 @@ impl BoundingBox {
 
 struct QuadTree {
     pub bounding_box: BoundingBox,
-    pub quadrants: Option<(Box<QuadTree>, Box<QuadTree>, Box<QuadTree>, Box<QuadTree>)>,
+    pub quadrants: Option<Vec<Box<QuadTree>>>,
     pub color: bool,
-}
-
-impl Drop for QuadTree {
-    fn drop(&mut self) {
-        if let Some(quadrants) = mem::take(&mut self.quadrants) {
-            drop(quadrants.0);
-            drop(quadrants.1);
-            drop(quadrants.2);
-            drop(quadrants.3);
-        }
-    }
 }
 
 impl QuadTree {
@@ -103,32 +98,19 @@ impl QuadTree {
             return false;
         }
 
-        if let Some(bounding_box_split) = self.bounding_box.split() {
-
-            let mut a = QuadTree::new(bounding_box_split.0);
-            let mut b = QuadTree::new(bounding_box_split.1);
-            let mut c = QuadTree::new(bounding_box_split.2);
-            let mut d = QuadTree::new(bounding_box_split.3);
-
-            a.split(image);
-            b.split(image);
-            c.split(image);
-            d.split(image);
-
-            self.quadrants = Some((
-                Box::new(a),
-                Box::new(b),
-                Box::new(c),
-                Box::new(d)
-            ));
+        if let Ok(bounding_box_split) = self.bounding_box.split() {
+            self.quadrants = Some(
+                bounding_box_split.iter().map(|bounding_box| {
+                    let mut quadtree = QuadTree::new(bounding_box.clone());
+                    quadtree.split(image);
+                    Box::new(quadtree)
+                }).collect::<Vec<_>>()
+            );
 
             return true;
-
         } else {
-            // TODO: What to do when a box like 0 0 2 1 shows up?
-            // panic!("Cannot split quadtree, quadtree is already at minimum size.");
-            self.color = first_pixel;
-            return false;
+            // this should never happen.
+            panic!("QuadTree failed to split.");
         }
     }
 
@@ -136,11 +118,10 @@ impl QuadTree {
         let mut stack: Vec<&QuadTree> = vec![self];
         std::iter::from_fn(move || stack.pop().map(|node| {
             let res = node;
-            if let Some((a, b, c, d)) = &node.quadrants {
-                stack.push(d);
-                stack.push(c);
-                stack.push(b);
-                stack.push(a);
+            if let Some(quadrants) = &node.quadrants {
+                quadrants.iter().rev().for_each(|quadrant| {
+                    stack.push(&quadrant);
+                });
             }
             res
         }))
@@ -162,7 +143,9 @@ fn encode_frame(frame: &GrayImage) -> Result<Vec<u8>, Box<dyn Error>> {
 
     for node in quadtree.iter_depth_first() {
         if node.quadrants.is_none() {
-            writer.write_bit(true)?;
+            if node.bounding_box.width != 1 || node.bounding_box.height != 1 {
+                writer.write_bit(true)?;
+            }
             writer.write_bit(node.color)?;
         } else {
             writer.write_bit(false)?;

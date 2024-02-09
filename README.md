@@ -50,9 +50,12 @@ The video data is encoded into [base64](https://en.wikipedia.org/wiki/Base64) an
             XX_X
             XXX_
             ```
+* [RleSimple2](src/format/rle_simple2.rs) (3)
+    * [RleSimple](src/format/rle_simple.rs) but lengths may be encoded into many bytes instead of 1.
 
 Format Table (60x45 @ 7fps)
 | Format | Size (Base64) | Total CPU Usage (μs) |
 |-|-|-|
 | [RleSimple](src/format/rle_simple.rs) | 304KiB | 515,026 |
 | [Quadtree](src/format/quadtree.rs) | 177KiB | 1,170,762 |
+| [RleSimple2](src/format/rle_simple2.rs) | 291KiB | 436,832 |

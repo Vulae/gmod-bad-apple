@@ -5,19 +5,15 @@ use image::GrayImage;
 mod rle_simple;
 mod quadtree;
 mod common;
+mod rle_simple2;
 
 
 
-/// Encoding sizes 60x45 @ 7fps:
-/// 
-/// rle - 228kb  
-/// quadtree - 157kb  
-/// 
-/// Both of them encode basically instantly.
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum Format {
     RleSimple = 1,
     QuadTree = 2,
+    RleSimple2 = 3,
 }
 
 impl Format {
@@ -26,6 +22,7 @@ impl Format {
         match self {
             Format::RleSimple => rle_simple::encode_frames(frames),
             Format::QuadTree => quadtree::encode_frames(frames),
+            Format::RleSimple2 => rle_simple2::encode_frames(frames),
         }
     }
 

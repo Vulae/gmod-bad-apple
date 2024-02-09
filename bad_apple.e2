@@ -143,6 +143,27 @@ function void rle_simple_decode_frame() {
     }
 }
 
+function void rle_simple2_decode_frame() {
+    let Index = 0
+    let Color = 0
+    
+    while(Index < Width * Height) {
+        let Count = stream_next()
+        if(Count >= 0b10000000) {
+            Count = bOr(bAnd(Count, 0b01111111), bShl(stream_next(), 7))
+        }
+        
+        if(Color) {
+            for(I = 0, Count - 1, 1) {
+                Screen:ds_invert(Index + I)
+            }
+        }
+        
+        Index += Count
+        Color = !Color
+    }
+}
+
 function void quadtree_decode_frame(X:number, Y:number, W:number, H:number) {
     # if(W < 1 || H < 1) {
     #     error("Quadtree is 0 sized.")
@@ -231,12 +252,12 @@ event tick() {
             
             Screen:ds_reset()
             
-            if((Format != 1) && (Format != 2)) {
+            if((Format != 1) && (Format != 2) && (Format != 3)) {
                 error("Invalid Format.")
             }
             
             if(First) {
-                print("Format: "+array("RleSimple", "QuadTree")[Format, string])
+                print("Format: "+array("RleSimple", "QuadTree", "RleSimple2")[Format, string])
                 print("Width: "+Width)
                 print("Height: "+Height)
                 print("Frames: "+Frames)
@@ -256,6 +277,7 @@ event tick() {
             switch(Format) {
                 case 1, rle_simple_decode_frame(), break
                 case 2, quadtree_decode_frame(0, 0, Width, Height), stream_bit_align(), break
+                case 3, rle_simple2_decode_frame(), break
             }
             Frame++
             if(Frame >= Frames) {
@@ -267,7 +289,9 @@ event tick() {
         break
         case 3,
             
-            print("Total CPU usage: "+(TotalCPUUsage * 1000000))
+            if(TotalCPUUsage > 0) {
+                print("Total CPU usage: "+(TotalCPUUsage * 1000000))
+            }
             
             if(Loop) {
                 State = 1

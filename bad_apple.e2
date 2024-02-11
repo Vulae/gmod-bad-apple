@@ -291,6 +291,7 @@ event tick() {
             
             if(TotalCPUUsage > 0) {
                 print("Total CPU usage: "+(TotalCPUUsage * 1000000))
+                TotalCPUUsage = 0
             }
             
             if(Loop) {

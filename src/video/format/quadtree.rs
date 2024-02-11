@@ -6,9 +6,7 @@ use core::fmt;
 use std::{cmp, error::Error, io::Write};
 use bitstream_io::{BitWrite, BitWriter, LittleEndian};
 use image::{GrayImage, Luma};
-use crate::get_size;
-
-use super::common::frames_difference;
+use super::common::{frames_difference, get_size};
 
 
 

@@ -4,7 +4,7 @@ use clap::ValueEnum;
 use image::GrayImage;
 mod rle_simple;
 mod quadtree;
-mod common;
+pub(crate) mod common;
 mod rle_simple2;
 
 

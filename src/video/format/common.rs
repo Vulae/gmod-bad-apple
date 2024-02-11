@@ -4,6 +4,20 @@ use image::{GrayImage, Luma};
 
 
 
+pub fn get_size(frames: &Vec<GrayImage>) -> Result<(u32, u32), Box<dyn Error>> {
+    let (width, height) = (frames[0].width(), frames[0].height());
+
+    if frames.iter().any(|frame| {
+        frame.width() != width || frame.height() != height
+    }) {
+        panic!("Frames width & heights do not match.");
+    }
+
+    Ok((width, height))
+}
+
+
+
 pub fn frames_difference(frame_a: &GrayImage, frame_b: &GrayImage) -> Result<GrayImage, Box<dyn Error>> {
     if frame_a.width() != frame_b.width() || frame_a.height() != frame_b.height() {
         panic!("Frames width & heights do not match.");

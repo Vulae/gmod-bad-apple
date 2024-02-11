@@ -25,6 +25,10 @@ The video data is encoded into [base64](https://en.wikipedia.org/wiki/Base64) an
 
 ### [Formats](#formats)
 
+Every video format encodes the difference between frames.  
+The reason the difference is used is because setting every pixel every frame is VERY expensive.  
+Even though the video data is smaller if we use the frames themselves instead of the difference, the E2 would easily hit tick quota while setting the pixels.  
+
 * [RleSimple](src/format/rle_simple.rs) (1)
     * The difference between frames is encoded.
     * Flip flops between off/on with lengths.

@@ -3,10 +3,11 @@
 // It all proof of concept and W.I.P. at the moment.
 
 use core::fmt;
-use std::{error::Error, io::Write};
+use std::{cmp, error::Error, io::Write};
 use bitstream_io::{BitWrite, BitWriter, LittleEndian};
-use image::GrayImage;
+use image::{GrayImage, Luma};
 use crate::get_size;
+
 use super::common::frames_difference;
 
 
@@ -157,10 +158,14 @@ fn encode_frame(frame: &GrayImage) -> Result<Vec<u8>, Box<dyn Error>> {
     Ok(buffer)
 }
 
-pub fn encode_frames(frames: &Vec<GrayImage>) -> Result<Vec<u8>, Box<dyn Error>> {
+// TODO: max_pixels_frame is currently broken.
+// For some reason encoding will break if any pixels are held for next frame?
+pub fn encode_frames(frames: &Vec<GrayImage>, max_pixels_frame: u64) -> Result<Vec<u8>, Box<dyn Error>> {
     let mut buffer: Vec<u8> = Vec::new();
     
     let (width, height) = get_size(frames)?;
+
+    let mut pending_pixels: Vec<(u64, u64)> = Vec::new();
 
     for (index, frame) in frames.iter().enumerate() {
         let last_frame = if index > 0 {
@@ -169,9 +174,29 @@ pub fn encode_frames(frames: &Vec<GrayImage>) -> Result<Vec<u8>, Box<dyn Error>>
             GrayImage::new(width, height)
         };
 
-        let frame_difference = frames_difference(&last_frame, frame)?;
+        // Add the difference of pixels to pending pixels queue.
+        frames_difference(frame, &last_frame)?
+            .pixels()
+            .enumerate()
+            .for_each(|(i, pixel)| {
+                if pixel.0[0] < 127 { return }
+                let x = (i as u64) % (width as u64);
+                let y = (i as u64) / (width as u64);
+                pending_pixels.push((x, y));
+            });
 
-        let frame_encoded = encode_frame(&frame_difference)?;
+        // Pixels to encode this frame.
+        let num_pixels = cmp::min(max_pixels_frame, pending_pixels.len() as u64);
+        let pixels_to_encode: Vec<(u64, u64)> = pending_pixels.drain(0..(num_pixels as usize)).collect();
+
+        // Create frame from pixels to encode.
+        let mut frame_difference_limited = GrayImage::new(width, height);
+        pixels_to_encode.iter().for_each(|(x, y)| {
+            frame_difference_limited.put_pixel(x.clone() as u32, y.clone() as u32, Luma([ 255 ]));
+        });
+
+        // Encode frame.
+        let frame_encoded = encode_frame(&frame_difference_limited)?;
         buffer.write(&frame_encoded)?;
     }
 

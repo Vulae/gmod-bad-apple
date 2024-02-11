@@ -6,10 +6,10 @@
 // There are many settings to use.
 // Here's 2 of them that work pretty well.
 // 
-// cargo run -- "media/frames.zip" 30 "media/audio.wav" "media/output.bin" 40 30 10
+// cargo run -- --video "media/frames.zip" 30 "media/audio.wav" "media/output.bin" 40 30 10
 // (Works without exceeding tick quota)
 // 
-// cargo run -- "media/frames.zip" 30 "media/audio.wav" "media/output.bin" 60 45 5
+// cargo run -- --video "media/frames.zip" 30 "media/audio.wav" "media/output.bin" 60 45 5
 // (Exceeds tick quota)
 // 
 

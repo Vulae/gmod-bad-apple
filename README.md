@@ -29,7 +29,7 @@ Every video format encodes the difference between frames.
 The reason the difference is used is because setting every pixel every frame is VERY expensive.  
 Even though the video data is smaller if we use the frames themselves instead of the difference, the E2 would easily hit tick quota while setting the pixels.  
 
-* [RleSimple](src/format/rle_simple.rs) (1)
+* [RleSimple](src/video/format/rle_simple.rs) (1)
     * The difference between frames is encoded.
     * Flip flops between off/on with lengths.
         * Eg. `3 1 2 4 1 4 1` will decode to
@@ -39,7 +39,7 @@ Even though the video data is smaller if we use the frames themselves instead of
         XX_X
         XXX_
         ```
-* [Quadtree](src/format/quadtree.rs) (2)
+* [Quadtree](src/video/format/quadtree.rs) (2)
     * The difference between frames is encoded.
     * Splits to sub-trees or leafs, Leafs encode color information.
         * 0 = Split
@@ -54,12 +54,12 @@ Even though the video data is smaller if we use the frames themselves instead of
             XX_X
             XXX_
             ```
-* [RleSimple2](src/format/rle_simple2.rs) (3)
-    * [RleSimple](src/format/rle_simple.rs) but lengths may be encoded into many bytes instead of 1.
+* [RleSimple2](src/video/format/rle_simple2.rs) (3)
+    * [RleSimple](src/video/format/rle_simple.rs) but lengths may be encoded into many bytes instead of 1.
 
 Format Table (60x45 @ 7fps)
 | Format | Size (Base64) | Total CPU Usage (μs) |
 |-|-|-|
-| [RleSimple](src/format/rle_simple.rs) | 304KiB | 515,026 |
-| [Quadtree](src/format/quadtree.rs) | 177KiB | 1,170,762 |
-| [RleSimple2](src/format/rle_simple2.rs) | 291KiB | 436,832 |
+| [RleSimple](src/video/format/rle_simple.rs) | 304KiB | 515,026 |
+| [Quadtree](src/video/format/quadtree.rs) | 177KiB | 1,170,762 |
+| [RleSimple2](src/video/format/rle_simple2.rs) | 291KiB | 436,832 |

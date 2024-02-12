@@ -40,28 +40,23 @@ impl BoundingBox {
     }
 
     pub fn split(&mut self) -> Result<Vec<BoundingBox>, Box<dyn Error>> {
+        // Split to four quadrants.
         let split_width = (self.width as f64) / 2.;
         let split_height = (self.height as f64) / 2.;
+        let mut boxes = vec![
+            BoundingBox::new(self.x, self.y, split_width.ceil() as u32, split_height.ceil() as u32),
+            BoundingBox::new(self.x + (split_width.ceil() as u32), self.y, split_width.floor() as u32, split_height.ceil() as u32),
+            BoundingBox::new(self.x, self.y + (split_height.ceil() as u32), split_width.ceil() as u32, split_height.floor() as u32),
+            BoundingBox::new(self.x + (split_width.ceil() as u32), self.y + (split_height.ceil() as u32), split_width.floor() as u32, split_height.floor() as u32)
+        ];
 
-        if self.width == 1 {
-            Ok(vec![
-                BoundingBox::new(self.x, self.y, 1, split_height.ceil() as u32),
-                BoundingBox::new(self.x, self.y + (split_height.ceil() as u32), 1, split_height.floor() as u32)
-            ])
-        } else if self.height == 1 {
-            Ok(vec![
-                BoundingBox::new(self.x, self.y, split_width.ceil() as u32, 1),
-                BoundingBox::new(self.x + (split_width.ceil() as u32), self.y, split_width.floor() as u32, 1)
-            ])
-        } else if self.width < 2 || self.height < 2 {
+        // Filter out quadrants with 0 size.
+        boxes = boxes.into_iter().filter(|r#box| r#box.width > 0 && r#box.height > 0).collect();
+
+        if boxes.is_empty() {
             Err(Box::new(BoundingBoxError::CannotSplit))
         } else {
-            Ok(vec![
-                BoundingBox::new(self.x, self.y, split_width.ceil() as u32, split_height.ceil() as u32),
-                BoundingBox::new(self.x + (split_width.ceil() as u32), self.y, split_width.floor() as u32, split_height.ceil() as u32),
-                BoundingBox::new(self.x, self.y + (split_height.ceil() as u32), split_width.ceil() as u32, split_height.floor() as u32),
-                BoundingBox::new(self.x + (split_width.ceil() as u32), self.y + (split_height.ceil() as u32), split_width.floor() as u32, split_height.floor() as u32)
-            ])
+            Ok(boxes)
         }
     }
 
@@ -107,10 +102,9 @@ impl QuadTree {
             );
 
             return true;
-        } else {
-            // this should never happen.
-            panic!("QuadTree failed to split.");
         }
+        
+        panic!("QuadTree failed to split.");
     }
 
     pub fn iter_depth_first(&mut self) -> impl Iterator<Item = &QuadTree> {
